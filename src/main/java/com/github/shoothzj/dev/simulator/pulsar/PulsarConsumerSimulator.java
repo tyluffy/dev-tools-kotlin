@@ -19,8 +19,11 @@
 
 package com.github.shoothzj.dev.simulator.pulsar;
 
+import com.github.shoothzj.dev.constant.Constant;
 import com.github.shoothzj.dev.module.UiResp;
+import com.github.shoothzj.dev.storage.StorageUtil;
 import com.github.shoothzj.javatool.util.ExceptionUtil;
+import org.apache.commons.io.FileUtils;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.PulsarClient;
@@ -31,6 +34,11 @@ import org.apache.pulsar.client.api.PulsarClientException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -41,6 +49,8 @@ public class PulsarConsumerSimulator {
     private final PulsarClientSimulator pulsarClientSimulator;
 
     private static final Integer MAX_RECEIVE_MSG = 100;
+
+    private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constant.SIMPLE_TIME_FORMAT);
 
     private Consumer<byte[]> consumer;
 
@@ -64,13 +74,20 @@ public class PulsarConsumerSimulator {
         }
     }
 
-    public UiResp<String> receive() {
+    public UiResp<String> receive(boolean allowSaveMsg) {
         try {
             Message<byte[]> receive = consumer.receive(100, TimeUnit.MILLISECONDS);
             if (receive == null) {
                 return new UiResp<>(false, "", "no msg available");
             }
-            return new UiResp<>(true, new String(receive.getValue()), "");
+            long publishTime = receive.getPublishTime();
+            String time = formatter.format(LocalDateTime.ofEpochSecond(publishTime / 1000, 0, ZoneOffset.ofHours(8)));
+            String msg = time + " : " + new String(receive.getValue());
+            if (allowSaveMsg) {
+                String str = System.getProperty("line.separator");
+                FileUtils.writeStringToFile(new File(StorageUtil.PULSAR_MSG_STORAGE_PATH), msg + str, StandardCharsets.UTF_8, true);
+            }
+            return new UiResp<>(true, msg, "");
         } catch (Exception e) {
             String errMsg = String.format("consume msg failed. e : %s", ExceptionUtil.getException(e));
             log.error(errMsg);
